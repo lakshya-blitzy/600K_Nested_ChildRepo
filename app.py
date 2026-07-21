@@ -1,6 +1,7 @@
 """Console entry point for the nested submodule sum-and-print application.
 
-This module is a **byte-identical copy of the parent repository's ``app.py``**.
+Its non-docstring executable code is identical to the parent repository's
+``app.py`` (only the repository-specific docstrings differ).
 It wires the reusable ``calculate_total`` helper (normally supplied by a sibling
 ``service.py``) to a tiny command-line demonstration: when executed directly it
 would compute the sum of a fixed list of numbers, print the total, echo each
@@ -12,10 +13,13 @@ Note:
     this directory FAILS at import time with an ``ImportError``. The sibling
     ``ChildRepo/NestedChild/service.py`` is a misplaced copy of this file and
     does **not** define ``calculate_total``; its own line-1 self-import raises
-    ``ImportError: cannot import name 'calculate_total' from partially
-    initialized module 'service' (most likely due to a circular import)``. This
-    is documented, not fixed — see the Troubleshooting section of
-    ``ChildRepo/NestedChild/README.md``.
+    ``ImportError`` as soon as it is imported. The exact diagnostic text is
+    CPython-version dependent: CPython 3.12 reports ``cannot import name
+    'calculate_total' from partially initialized module 'service' (most likely
+    due to a circular import)``, while CPython 3.13 reports ``cannot import name
+    'calculate_total' from 'service' (consider renaming .../service.py if it has
+    the same name as a library you intended to import)``. This is documented,
+    not fixed.
 
 Usage:
     python app.py    # currently raises ImportError at this nested level
