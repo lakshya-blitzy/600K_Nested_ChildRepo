@@ -13,13 +13,18 @@ Note:
     this directory FAILS at import time with an ``ImportError``. The sibling
     ``ChildRepo/NestedChild/service.py`` is a misplaced copy of this file and
     does **not** define ``calculate_total``; its own line-1 self-import raises
-    ``ImportError`` as soon as it is imported. The exact diagnostic text is
-    CPython-version dependent: CPython 3.12 reports ``cannot import name
-    'calculate_total' from partially initialized module 'service' (most likely
-    due to a circular import)``, while CPython 3.13 reports ``cannot import name
-    'calculate_total' from 'service' (consider renaming .../service.py if it has
-    the same name as a library you intended to import)``. This is documented,
-    not fixed.
+    ``ImportError`` as soon as it is imported.
+    `Source: ChildRepo/NestedChild/service.py:L1-L16`.
+    On the verified CPython 3.12.3 interpreter the exact message is
+    ``cannot import name 'calculate_total' from partially initialized module
+    'service' (most likely due to a circular import)`` and the process exits
+    with status code 1.
+    `Source: verified by running "python app.py" under CPython 3.12.3 (exit code 1)`.
+    (Secondary, informational only: the newer CPython 3.13 series reports
+    ``cannot import name 'calculate_total' from 'service' (consider renaming
+    '.../service.py' if it has the same name as a library you intended to
+    import)`` for the same failure; the exception type and exit code are
+    identical, only the wording differs.) This is documented, not fixed.
 
 Usage:
     python app.py    # currently raises ImportError at this nested level

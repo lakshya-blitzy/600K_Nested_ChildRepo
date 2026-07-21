@@ -29,10 +29,11 @@ real (failing) behavior.
 
 `ChildRepo/NestedChild` occupies the innermost level of a three-level submodule
 chain: `ChildRepo` embeds it as a nested submodule, and `ChildRepo` is itself a
-submodule of the parent repository. The diagram below shows this repository's
-place in the chain and highlights the self-import failure at this level
-(documented, not fixed — see
+submodule of the parent repository. `Source: ChildRepo/.gitmodules`, `Source: .gitmodules`.
+The diagram below shows this repository's place in the chain and highlights the
+self-import failure at this level (documented, not fixed — see
 [Known Limitations / Troubleshooting](#known-limitations--troubleshooting)).
+`Source: ChildRepo/NestedChild/service.py:L1-L16`.
 
 ```mermaid
 graph TD
@@ -90,10 +91,14 @@ this is the deepest level of the chain.
 | Third-party packages  | **None.** The project uses only the Python standard library; the repository tree contains no dependency manifest (no `requirements.txt`, `pyproject.toml`, or `setup.py`). `Source: repository file tree (see [Repository Structure](#repository-structure))` |
 
 > **Verified interpreter:** The runtime behavior documented in
-> [Usage / Running](#usage--running) was verified on **CPython 3.13.7**. The
-> program's import-time failure is deterministic on any supported version, but
-> the exact `ImportError` diagnostic text is CPython-version dependent (see
-> [Usage / Running](#usage--running)). `Source: ChildRepo/NestedChild/service.py:L1-L16`.
+> [Usage / Running](#usage--running) was verified on **CPython 3.12.3** (the
+> interpreter pinned by the project). The program's import-time failure is
+> deterministic on any supported version, but the exact `ImportError` diagnostic
+> text is CPython-version dependent — the CPython 3.12.3 wording is authoritative
+> here and the CPython 3.13 variant is noted as secondary (see
+> [Usage / Running](#usage--running)).
+> `Source: verified by running "python app.py" under CPython 3.12.3 (exit code 1)`,
+> `Source: ChildRepo/NestedChild/service.py:L1-L16`.
 
 ---
 
@@ -138,6 +143,7 @@ git submodule update --init --recursive
 Both modules at this level define the same `main()` entry point (a copy of the
 parent's `main()`). Neither can actually run, because importing `service`
 raises `ImportError` (see [Usage / Running](#usage--running)).
+`Source: ChildRepo/NestedChild/app.py:L3-L16`, `Source: ChildRepo/NestedChild/service.py:L3-L16`, `Source: app.py:L3-L16`.
 
 | Module        | Function | Signature | Behavior / Returns                                                                                                                                                     |
 |---------------|----------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -148,7 +154,7 @@ raises `ImportError` (see [Usage / Running](#usage--running)).
 > exposes `calculate_total(numbers)` (sum; `0` for an empty list) and
 > `calculate_average(numbers)` (`0` for falsey/empty input, else `sum / len`).
 > Those helpers are **absent here**, which is the root cause of the failure at
-> this level. `Source: ChildRepo/NestedChild/service.py:L1-L16`.
+> this level. `Source: service.py:L1-L14`, `Source: ChildRepo/service.py:L1-L14`, `Source: ChildRepo/NestedChild/service.py:L1-L16`.
 
 ---
 
@@ -165,25 +171,40 @@ Run the entry point from within the `ChildRepo/NestedChild` working tree:
 python app.py
 ```
 
-**Actual output** (captured on **CPython 3.13.7**; process exits with a non-zero
-status, exit code `1`). The machine-specific absolute path prefix is shown as
-`.../` for readability; line numbers reflect the current source files (after
-per-function docstrings were added, the `import` statements sit at `app.py`
-line 30 and `service.py` line 37). `Source: ChildRepo/NestedChild/app.py:L1`,
-`Source: ChildRepo/NestedChild/service.py:L1`.
+**Actual output** (captured on the pinned **CPython 3.12.3** interpreter; process
+exits with a non-zero status, exit code `1`). The machine-specific absolute path
+prefix is shown as `.../` for readability; line numbers reflect the current
+source files (after per-function docstrings were added, the `import` statements
+sit at `app.py` line 35 and `service.py` line 43).
+`Source: verified by running "python app.py" under CPython 3.12.3 (exit code 1)`,
+`Source: ChildRepo/NestedChild/app.py:L1`, `Source: ChildRepo/NestedChild/service.py:L1`.
 
 ```text
 Traceback (most recent call last):
-  File ".../ChildRepo/NestedChild/app.py", line 30, in <module>
+  File ".../ChildRepo/NestedChild/app.py", line 35, in <module>
     from service import calculate_total
-  File ".../ChildRepo/NestedChild/service.py", line 37, in <module>
+  File ".../ChildRepo/NestedChild/service.py", line 43, in <module>
     from service import calculate_total
-ImportError: cannot import name 'calculate_total' from 'service' (consider renaming '.../ChildRepo/NestedChild/service.py' if it has the same name as a library you intended to import)
+ImportError: cannot import name 'calculate_total' from partially initialized module 'service' (most likely due to a circular import) (.../ChildRepo/NestedChild/service.py)
 ```
 
-Running `python service.py` directly fails **identically** (also exit code `1`),
-because `service.py` re-imports the name `calculate_total` from itself.
+Running `python service.py` directly reaches the **same final `ImportError` and
+the same exit code `1`**, but via a **different traceback**: because `service.py`
+is executed as `__main__` and then re-imported under the name `service`, both
+frames point at `service.py` line 43 (a self-referential chain), rather than the
+`app.py` line 35 → `service.py` line 43 chain shown above. The final error line
+is identical.
+`Source: verified by running "python service.py" under CPython 3.12.3 (exit code 1)`,
 `Source: ChildRepo/NestedChild/service.py:L1-L16`.
+
+```text
+Traceback (most recent call last):
+  File ".../ChildRepo/NestedChild/service.py", line 43, in <module>
+    from service import calculate_total
+  File ".../ChildRepo/NestedChild/service.py", line 43, in <module>
+    from service import calculate_total
+ImportError: cannot import name 'calculate_total' from partially initialized module 'service' (most likely due to a circular import) (.../ChildRepo/NestedChild/service.py)
+```
 
 **Why it fails (one sentence):** `service.py` is named `service`, so its line-1
 statement `from service import calculate_total` is a **self-import** — the module
@@ -192,16 +213,19 @@ file never defines `calculate_total`, the import raises `ImportError`.
 `Source: ChildRepo/NestedChild/service.py:L1-L16`.
 
 > **CPython-version note (message text is version dependent):** The failure itself
-> is stable, but the exact `ImportError` message differs by interpreter. CPython
-> **3.13** reports the message shown above (`... from 'service' (consider renaming
-> ... )`), whereas CPython **3.12** reports:
+> is stable, but the exact `ImportError` message differs by interpreter. The
+> **authoritative** wording is the one shown in the traceback above, captured on
+> the pinned **CPython 3.12.3** (`... from partially initialized module 'service'
+> (most likely due to a circular import)`). For reference only, the newer CPython
+> **3.13** series reports a different message for the same failure:
 >
 > ```text
-> ImportError: cannot import name 'calculate_total' from partially initialized module 'service' (most likely due to a circular import)
+> ImportError: cannot import name 'calculate_total' from 'service' (consider renaming '.../ChildRepo/NestedChild/service.py' if it has the same name as a library you intended to import)
 > ```
 >
-> Do not treat either wording as the single universal message; the invariant is
-> that importing `service` fails with `ImportError`.
+> The CPython 3.13 wording is secondary and informational; the invariant across
+> versions is that importing `service` fails with `ImportError` and exit code `1`.
+> `Source: verified by running "python app.py" under CPython 3.12.3 (exit code 1)`,
 > `Source: ChildRepo/NestedChild/service.py:L1-L16`.
 
 ---
@@ -264,8 +288,10 @@ flowchart LR
 ## Deployment Guide
 
 There is **no build or packaging system** for this project — no compilation step,
-no bundler, and no package manifest; the repository tree contains only the two
-Python modules and this README.
+no bundler, and no package manifest. The executable application at this level
+consists of just the two Python modules (`app.py` and `service.py`); the working
+tree additionally holds this README, a `.blitzyignore`-excluded `large.csv` data
+file, and version-control metadata.
 `Source: repository file tree (see [Repository Structure](#repository-structure))`.
 
 **Deployment cannot succeed as-is at this level.** Because `service.py` does not
@@ -302,16 +328,20 @@ hard-coded list inside `main()`. `Source: ChildRepo/NestedChild/app.py:L1-L16`,
 - **⚠️ Broken nested module (root cause).** `ChildRepo/NestedChild/service.py` is a
   byte-identical (executable-code) copy of `app.py`. It self-imports
   `from service import calculate_total`, so importing or running the app raises
-  `ImportError`. On CPython 3.13 the message is
-  `cannot import name 'calculate_total' from 'service' (consider renaming ... if it
-  has the same name as a library you intended to import)`; on CPython 3.12 it is
+  `ImportError`. On the pinned **CPython 3.12.3** the message is
   `cannot import name 'calculate_total' from partially initialized module 'service'
-  (most likely due to a circular import)`. Verified on CPython 3.13.7 (exit code
-  `1`). `Source: ChildRepo/NestedChild/service.py:L1-L16`.
+  (most likely due to a circular import)`, and the process exits with code `1`. For
+  reference only, the newer CPython 3.13 series reports the secondary wording
+  `cannot import name 'calculate_total' from 'service' (consider renaming ... if it
+  has the same name as a library you intended to import)`.
+  `Source: verified by running "python app.py" under CPython 3.12.3 (exit code 1)`,
+  `Source: ChildRepo/NestedChild/app.py:L1-L16`,
+  `Source: ChildRepo/NestedChild/service.py:L1-L16`.
 - **Resolution guidance (NOT applied here).** The nested module cannot run until
   `service.py` provides `calculate_total`/`calculate_average` (the correct helpers
   found in the parent and `ChildRepo` `service.py`). Per task scope, this
   documentation does **not** modify the code.
+  `Source: service.py:L1-L14`, `Source: ChildRepo/service.py:L1-L14`,
   `Source: ChildRepo/NestedChild/service.py:L1-L16`.
 - **Empty submodule directory.** If `ChildRepo/NestedChild/` (or its parent
   `ChildRepo/`) is empty after cloning — because the repository was cloned without
